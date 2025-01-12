@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "981016706579",
+    "project_id": "roadapp-18484",
+    "storage_bucket": "roadapp-18484.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:981016706579:android:8e0019cfd9f3facc5289e6",
+        "android_client_info": {
+          "package_name": "com.example.roadapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmZPCTzZxQL911A0o2Wp45MIND0n0c3PA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
