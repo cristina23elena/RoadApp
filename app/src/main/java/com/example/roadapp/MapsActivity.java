@@ -37,6 +37,9 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.*;
+import android.os.Handler;
+import android.os.Looper;
+
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
@@ -167,13 +170,27 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         GridLayout gridLayout = view.findViewById(R.id.grid_layout);
 
         // Tipurile de raport și iconițele corespunzătoare
-        String[] tipuri = {"Groapă", "Drum în lucru", "Poliție", "Accident", "Blocaj"};
+        String[] tipuri = {
+                "Groapă",
+                "Drum în lucru",
+                "Poliție",
+                "Accident",
+                "Blocaj",
+                "Denivelare",
+                "Inundație",
+                "Capac lipsa"
+
+        };
+
         int[] icons = {
-                R.drawable.ic_pit,
-                R.drawable.road_block,
-                R.drawable.police_car,
-                R.drawable.car_crash,
-                R.drawable.warning_icon
+                R.drawable.ic_pit,           // Groapă
+                R.drawable.road_block,       // Drum în lucru
+                R.drawable.police_car,       // Poliție
+                R.drawable.car_crash,        // Accident
+                R.drawable.warning_icon,     // Blocaj
+                R.drawable.ic_bump,          // Denivelare
+                R.drawable.ic_flood,         // Inundație
+                R.drawable.ic_missing_lid    // Capac lipsă
         };
 
         for (int i = 0; i < tipuri.length; i++) {
@@ -196,6 +213,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         dialog.setContentView(view);
         dialog.show();
     }
+
     private void sendReport(String tipRaport) {
         if (currentLocation == null) {
             Toast.makeText(this, "Locația nu este disponibilă", Toast.LENGTH_SHORT).show();
@@ -226,7 +244,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     reportMarkers.add(reportMarker);
                 }
 
-                // ✨ Șterge markerul roșu default (dacă e prezent)
+                //  Șterge markerul roșu default (dacă e prezent)
                 if (userMarker != null) {
                     userMarker.remove();
                     userMarker = null;
@@ -394,6 +412,23 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         String polyline = route.getJSONObject("overview_polyline").getString("points");
 
                         List<LatLng> points = PolyUtil.decode(polyline);
+                        DatabaseReference segRef = FirebaseDatabase.getInstance().getReference("segmente_drum");
+                        segRef.removeValue(); // opțional: șterge segmentele vechi pentru traseu nou
+
+                        for (int i = 0; i < points.size() - 1; i++) {
+                            LatLng start = points.get(i);
+                            LatLng end = points.get(i + 1);
+
+                            Map<String, Object> segment = new HashMap<>();
+                            segment.put("startLat", start.latitude);
+                            segment.put("startLng", start.longitude);
+                            segment.put("endLat", end.latitude);
+                            segment.put("endLng", end.longitude);
+                            segment.put("scor", 100); // scor inițial
+
+                            segRef.push().setValue(segment);
+                        }
+
 
                         runOnUiThread(() -> {
                             gMap.clear();
@@ -414,6 +449,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             textDistance.setText(distance);
                             textDuration.setText(duration);
                             cardInfo.setVisibility(View.VISIBLE);
+                            updateScoruriSegment();
+                            new Handler(Looper.getMainLooper()).postDelayed(() -> drawSegmentsOnMap(), 2000);
+
                         });
                     }
                 } catch (Exception e) {
@@ -429,4 +467,124 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             Toast.makeText(this, "Eroare la geocodare", Toast.LENGTH_SHORT).show();
         }
     }
+    private void updateScoruriSegment() {
+        DatabaseReference raportariRef = FirebaseDatabase.getInstance().getReference("raportari");
+        DatabaseReference segmenteRef = FirebaseDatabase.getInstance().getReference("segmente_drum");
+
+        segmenteRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot segmentSnapshot) {
+                for (DataSnapshot segment : segmentSnapshot.getChildren()) {
+                    double startLat = segment.child("startLat").getValue(Double.class);
+                    double startLng = segment.child("startLng").getValue(Double.class);
+                    double endLat = segment.child("endLat").getValue(Double.class);
+                    double endLng = segment.child("endLng").getValue(Double.class);
+
+                    LatLng start = new LatLng(startLat, startLng);
+                    LatLng end = new LatLng(endLat, endLng);
+
+                    raportariRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                        @Override
+                        public void onDataChange(@NonNull DataSnapshot raportSnapshot) {
+                            int scor = 100;
+                            long timpActual = System.currentTimeMillis();
+                            long sapteZile = 7 * 24 * 60 * 60 * 1000L;
+
+                            for (DataSnapshot r : raportSnapshot.getChildren()) {
+                                String tip = r.child("tip").getValue(String.class).toLowerCase();
+                                Double lat = r.child("lat").getValue(Double.class);
+                                Double lng = r.child("lng").getValue(Double.class);
+                                Long timestamp = r.child("timestamp").getValue(Long.class);
+
+                                if (lat == null || lng == null || timestamp == null) continue;
+                                if ((timpActual - timestamp) > sapteZile) continue;
+
+                                // Doar probleme care țin de starea drumului
+                                if (tip.contains("groapa") || tip.contains("lucru") || tip.contains("denivelare")
+                                        || tip.contains("inundatie") || tip.contains("capac")) {
+
+                                    double dist = distanceToSegment(start, end, new LatLng(lat, lng));
+                                    if (dist < 100) scor -= 10;
+                                }
+                            }
+
+                            segment.getRef().child("scor").setValue(Math.max(scor, 0));
+                        }
+
+                        @Override
+                        public void onCancelled(@NonNull DatabaseError error) {}
+                    });
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {}
+        });
+    }
+    public double distanceToSegment(LatLng A, LatLng B, LatLng P) {
+        double ax = A.latitude;
+        double ay = A.longitude;
+        double bx = B.latitude;
+        double by = B.longitude;
+        double px = P.latitude;
+        double py = P.longitude;
+
+        double dx = bx - ax;
+        double dy = by - ay;
+        if (dx == 0 && dy == 0) {
+            dx = px - ax;
+            dy = py - ay;
+            return Math.sqrt(dx * dx + dy * dy) * 111000;
+        }
+
+        double t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy);
+        t = Math.max(0, Math.min(1, t));
+
+        double closestX = ax + t * dx;
+        double closestY = ay + t * dy;
+
+        dx = px - closestX;
+        dy = py - closestY;
+
+        return Math.sqrt(dx * dx + dy * dy) * 111000;
+    }
+    private void drawSegmentsOnMap() {
+        DatabaseReference segRef = FirebaseDatabase.getInstance().getReference("segmente_drum");
+
+        segRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                for (DataSnapshot segment : snapshot.getChildren()) {
+                    double startLat = segment.child("startLat").getValue(Double.class);
+                    double startLng = segment.child("startLng").getValue(Double.class);
+                    double endLat = segment.child("endLat").getValue(Double.class);
+                    double endLng = segment.child("endLng").getValue(Double.class);
+                    int scor = segment.child("scor").getValue(Integer.class);
+
+                    LatLng start = new LatLng(startLat, startLng);
+                    LatLng end = new LatLng(endLat, endLng);
+
+                    int color;
+                    if (scor >= 80) {
+                        color = 0xFF4CAF50; // verde
+                    } else if (scor >= 50) {
+                        color = 0xFFFFC107; // galben
+                    } else {
+                        color = 0xFFF44336; // roșu
+                    }
+
+                    gMap.addPolyline(new PolylineOptions()
+                            .add(start, end)
+                            .color(color)
+                            .width(10));
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Toast.makeText(MapsActivity.this, "Eroare la afișarea stării drumului", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
 }

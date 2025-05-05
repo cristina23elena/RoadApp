@@ -3,6 +3,9 @@
     android:id="@+id/grid_layout"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:columnCount="3"
-    android:padding="16dp">
-</GridLayout>
+    android:columnCount="4"
+    android:rowCount="2"
+    android:padding="16dp"
+    android:useDefaultMargins="true"
+    android:alignmentMode="alignMargins"
+    android:columnOrderPreserved="false" />
