@@ -1,52 +1,432 @@
 package com.example.roadapp;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.location.Address;
+import android.location.Geocoder;
+import android.location.Location;
 import android.os.Bundle;
-import android.widget.FrameLayout;
+import android.util.Log;
+import android.view.View;
+import android.widget.*;
 
-import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
-import androidx.fragment.app.Fragment;
+import androidx.cardview.widget.CardView;
+import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.FragmentActivity;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
+import android.view.View.OnTouchListener;
 
-import com.google.android.gms.maps.CameraUpdateFactory;
-import com.google.android.gms.maps.GoogleMap;
-import com.google.android.gms.maps.MapFragment;
-import com.google.android.gms.maps.OnMapReadyCallback;
-import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.MarkerOptions;
+
+import com.google.android.gms.location.*;
+import com.google.android.gms.maps.*;
+import com.google.android.gms.maps.model.*;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.firebase.database.*;
+import com.google.maps.android.PolyUtil;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.*;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
-
-    GoogleMap gMap;
-    FrameLayout map;
+    private GoogleMap gMap;
+    private FusedLocationProviderClient fusedClient;
+    private static final int REQUEST_CODE = 101;
+    private Location currentLocation;
+    private boolean cameraAlreadyMoved = false;
+    private Marker userMarker;
+    private EditText editStart, editDestination;
+    private Button btnRoute, btnStart;
+    private TextView textDistance, textDuration;
+    private CardView cardInfo;
+    private FloatingActionButton fabReport;
+    private final List<Marker> reportMarkers = new ArrayList<>();
+    private Marker startMarker;
+    private LinearLayout cardInput;
+    private TextView textDestFinal;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         setContentView(R.layout.activity_maps);
 
-        map= findViewById(R.id.map);
+        editStart = findViewById(R.id.edit_start);
+        editDestination = findViewById(R.id.edit_destination);
+        btnRoute = findViewById(R.id.btn_route);
+        btnStart = findViewById(R.id.btn_start);
+        textDistance = findViewById(R.id.text_distance);
+        textDuration = findViewById(R.id.text_duration);
+        cardInfo = findViewById(R.id.card_info);
+        fabReport = findViewById(R.id.fab_report);
+        cardInput = findViewById(R.id.card_input);
+        textDestFinal = findViewById(R.id.text_dest_final);
+        GestureDetector gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
 
-        SupportMapFragment mapFragment=(SupportMapFragment)  getSupportFragmentManager().findFragmentById(R.id.map);
+            @Override
+            public boolean onDown(MotionEvent e) {
+                return true;
+            }
 
-        mapFragment.getMapAsync(this);
+            @Override
+            public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+                float deltaY = e2.getY() - e1.getY();
+                if (deltaY > 100) { // glisare în jos
+                    cardInput.setVisibility(View.VISIBLE);
+                    cardInput.setTranslationY(-cardInput.getHeight());
+                    cardInput.animate().translationY(0f).alpha(1f).setDuration(500).start();
+                    textDestFinal.setVisibility(View.GONE);
+                    return true;
+                }
+                return false;
+            }
+        });
 
+
+        textDestFinal.setOnTouchListener((v, event) -> gestureDetector.onTouchEvent(event));
+
+        fabReport.setVisibility(View.GONE);
+
+        fusedClient = LocationServices.getFusedLocationProviderClient(this);
+
+        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
+        if (mapFragment != null) mapFragment.getMapAsync(this);
+
+        btnRoute.setOnClickListener(v -> {
+            String start = editStart.getText().toString();
+            String dest = editDestination.getText().toString();
+
+            if (dest.isEmpty()) {
+                Toast.makeText(this, "Completează destinația", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            if (start.isEmpty()) {
+                if (currentLocation != null) {
+                    LatLng origin = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
+                    drawRouteFromCoordinates(origin, dest);
+                } else {
+                    Toast.makeText(this, "Locația curentă nu este disponibilă", Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                drawRoute(start, dest);
+            }
+        });
+        btnStart.setOnClickListener(v -> {
+            // Șterge markerul locației curente (dacă există)
+            if (userMarker != null) {
+                userMarker.remove();
+                userMarker = null;
+            }
+
+            // Mișcă camera pe punctul de start dacă există
+            if (startMarker != null) {
+                CameraPosition cameraPosition = new CameraPosition.Builder()
+                        .target(startMarker.getPosition())
+                        .zoom(18f)
+                        .bearing(currentLocation != null ? currentLocation.getBearing() : 0)
+                        .tilt(60f)
+                        .build();
+                gMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
+            }
+
+            // Ascunde cardul cu inputuri cu animație în sus
+            cardInput.animate()
+                    .translationY(-cardInput.getHeight())
+                    .alpha(0f)
+                    .setDuration(500)
+                    .withEndAction(() -> cardInput.setVisibility(View.GONE))
+                    .start();
+
+            // Afișează doar destinația într-un singur rând
+            String destinatie = editDestination.getText().toString();
+            textDestFinal.setText(destinatie);
+            textDestFinal.setVisibility(View.VISIBLE);
+
+            Toast.makeText(this, "Navigarea a început!", Toast.LENGTH_SHORT).show();
+            fabReport.setVisibility(View.VISIBLE); // Afișează butonul de raportare
+        });
+
+
+        fabReport.setOnClickListener(v -> showReportDialog());
     }
+
+    private void showReportDialog() {
+        BottomSheetDialog dialog = new BottomSheetDialog(this);
+        View view = getLayoutInflater().inflate(R.layout.dialog_report_grid, null);
+        GridLayout gridLayout = view.findViewById(R.id.grid_layout);
+
+        // Tipurile de raport și iconițele corespunzătoare
+        String[] tipuri = {"Groapă", "Drum în lucru", "Poliție", "Accident", "Blocaj"};
+        int[] icons = {
+                R.drawable.ic_pit,
+                R.drawable.road_block,
+                R.drawable.police_car,
+                R.drawable.car_crash,
+                R.drawable.warning_icon
+        };
+
+        for (int i = 0; i < tipuri.length; i++) {
+            View item = getLayoutInflater().inflate(R.layout.report_grid_item, null);
+            ImageView icon = item.findViewById(R.id.icon);
+            TextView label = item.findViewById(R.id.label);
+
+            icon.setImageResource(icons[i]);
+            label.setText(tipuri[i]);
+
+            int finalI = i;
+            item.setOnClickListener(v -> {
+                dialog.dismiss();
+                sendReport(tipuri[finalI]);
+            });
+
+            gridLayout.addView(item);
+        }
+
+        dialog.setContentView(view);
+        dialog.show();
+    }
+    private void sendReport(String tipRaport) {
+        if (currentLocation == null) {
+            Toast.makeText(this, "Locația nu este disponibilă", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference("raportari");
+        String id = dbRef.push().getKey();
+        if (id != null) {
+            Map<String, Object> data = new HashMap<>();
+            data.put("tip", tipRaport);
+            data.put("lat", currentLocation.getLatitude());
+            data.put("lng", currentLocation.getLongitude());
+            data.put("timestamp", System.currentTimeMillis());
+
+            dbRef.child(id).setValue(data).addOnSuccessListener(unused -> {
+                LatLng locatie = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
+                int iconResId = getIconForReport(tipRaport);
+                if (iconResId != 0) {
+                    Bitmap icon = BitmapFactory.decodeResource(getResources(), iconResId);
+                    Bitmap resizedIcon = Bitmap.createScaledBitmap(icon, 150, 150, false);
+
+                    Marker reportMarker = gMap.addMarker(new MarkerOptions()
+                            .position(locatie)
+                            .title(tipRaport)
+                            .icon(BitmapDescriptorFactory.fromBitmap(resizedIcon)));
+
+                    reportMarkers.add(reportMarker);
+                }
+
+                // ✨ Șterge markerul roșu default (dacă e prezent)
+                if (userMarker != null) {
+                    userMarker.remove();
+                    userMarker = null;
+                }
+
+                Toast.makeText(this, "Raport trimis: " + tipRaport, Toast.LENGTH_SHORT).show();
+            });
+        }
+    }
+
 
     @Override
     public void onMapReady(@NonNull GoogleMap googleMap) {
-        this.gMap= googleMap;
+        gMap = googleMap;
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, REQUEST_CODE);
+            return;
+        }
+        gMap.setMyLocationEnabled(true);
+        startLocationUpdates();
+        loadReportsFromFirebase();
+    }
 
-        LatLng mapRomania = new LatLng(45.9443,25.0094);
-        this.gMap.addMarker(new MarkerOptions().position(mapRomania).title("Marker in Romania"));
-        this.gMap.moveCamera(CameraUpdateFactory.newLatLng(mapRomania));
+    private void startLocationUpdates() {
+        LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
+                .setMinUpdateIntervalMillis(2000).build();
 
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
+
+        fusedClient.requestLocationUpdates(request, new LocationCallback() {
+            @Override
+            public void onLocationResult(@NonNull LocationResult result) {
+                if (result.getLastLocation() != null) {
+                    currentLocation = result.getLastLocation();
+                    LatLng currentLatLng = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
+
+                    if (userMarker != null) userMarker.remove();
+                    userMarker = gMap.addMarker(new MarkerOptions().position(currentLatLng).title("Tu ești aici"));
+
+                    if (!cameraAlreadyMoved) {
+                        gMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 14));
+                        cameraAlreadyMoved = true;
+                    }
+                }
+            }
+        }, getMainLooper());
+    }
+
+    private void loadReportsFromFirebase() {
+        DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference("raportari");
+
+        for (Marker marker : reportMarkers) {
+            marker.remove();
+        }
+        reportMarkers.clear();
+
+        dbRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                for (DataSnapshot reportSnapshot : snapshot.getChildren()) {
+                    try {
+                        Double lat = reportSnapshot.child("lat").getValue(Double.class);
+                        Double lng = reportSnapshot.child("lng").getValue(Double.class);
+                        String tip = reportSnapshot.child("tip").getValue(String.class);
+
+                        if (lat == null || lng == null || tip == null) continue;
+
+                        LatLng locatie = new LatLng(lat, lng);
+                        int iconResId = getIconForReport(tip);
+                        if (iconResId == 0) continue;
+
+                        Bitmap icon = BitmapFactory.decodeResource(getResources(), iconResId);
+                        Bitmap resizedIcon = Bitmap.createScaledBitmap(icon, 150, 150, false);
+
+                        Marker marker = gMap.addMarker(new MarkerOptions()
+                                .position(locatie)
+                                .title(tip)
+                                .icon(BitmapDescriptorFactory.fromBitmap(resizedIcon)));
+
+                        reportMarkers.add(marker);
+
+                    } catch (Exception e) {
+                        Log.e("FirebaseMarker", "Eroare: " + e.getMessage());
+                    }
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Toast.makeText(MapsActivity.this, "Eroare Firebase", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    private int getIconForReport(String tip) {
+        if (tip == null) return R.drawable.marker_arrow;
+
+        tip = tip.toLowerCase(Locale.ROOT)
+                .replace("ă", "a")
+                .replace("â", "a")
+                .replace("î", "i")
+                .replace("ș", "s")
+                .replace("ş", "s")
+                .replace("ț", "t")
+                .replace("ţ", "t");
+
+        if (tip.contains("groapa")) return R.drawable.ic_pit;
+        if (tip.contains("drum") && tip.contains("lucru")) return R.drawable.road_block;
+        if (tip.contains("politie")) return R.drawable.police_car;
+        if (tip.contains("accident")) return R.drawable.car_crash;
+        if (tip.contains("blocaj")) return R.drawable.warning_icon;
+
+        return R.drawable.marker_arrow;
+    }
+
+    private void drawRoute(String originName, String destinationName) {
+        Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+        try {
+            List<Address> originList = geocoder.getFromLocationName(originName, 1);
+            if (originList.isEmpty()) {
+                Toast.makeText(this, "Locație de plecare invalidă", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            LatLng origin = new LatLng(originList.get(0).getLatitude(), originList.get(0).getLongitude());
+            drawRouteFromCoordinates(origin, destinationName);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void drawRouteFromCoordinates(LatLng origin, String destinationName) {
+        Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+        try {
+            List<Address> destList = geocoder.getFromLocationName(destinationName, 1);
+            if (destList.isEmpty()) {
+                Toast.makeText(this, "Destinație invalidă", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            LatLng destination = new LatLng(destList.get(0).getLatitude(), destList.get(0).getLongitude());
+
+            String url = "https://maps.googleapis.com/maps/api/directions/json?origin="
+                    + origin.latitude + "," + origin.longitude +
+                    "&destination=" + destination.latitude + "," + destination.longitude +
+                    "&key=AIzaSyCw3d4KYLtAUYRF1NOpfoF6fa6hksclw2s";
+
+            new Thread(() -> {
+                try {
+                    HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+                    conn.setRequestMethod("GET");
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    StringBuilder json = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) json.append(line);
+                    reader.close();
+
+                    JSONObject response = new JSONObject(json.toString());
+                    JSONArray routes = response.getJSONArray("routes");
+                    if (routes.length() > 0) {
+                        JSONObject route = routes.getJSONObject(0);
+                        JSONObject leg = route.getJSONArray("legs").getJSONObject(0);
+
+                        String distance = leg.getJSONObject("distance").getString("text");
+                        String duration = leg.getJSONObject("duration").getString("text");
+                        String polyline = route.getJSONObject("overview_polyline").getString("points");
+
+                        List<LatLng> points = PolyUtil.decode(polyline);
+
+                        runOnUiThread(() -> {
+                            gMap.clear();
+                            gMap.addPolyline(new PolylineOptions().addAll(points).color(0xFF6200EE).width(12));
+
+                            Bitmap arrowIcon = BitmapFactory.decodeResource(getResources(), R.drawable.marker_arrow);
+                            Bitmap resizedArrow = Bitmap.createScaledBitmap(arrowIcon, 90, 90, false);
+
+                            startMarker = gMap.addMarker(new MarkerOptions()
+                                    .position(origin)
+                                    .title("Start")
+                                    .icon(BitmapDescriptorFactory.fromBitmap(resizedArrow)));
+
+                            gMap.addMarker(new MarkerOptions().position(destination).title("Destinație"));
+
+                            gMap.moveCamera(CameraUpdateFactory.newLatLngZoom(origin, 13));
+
+                            textDistance.setText(distance);
+                            textDuration.setText(duration);
+                            cardInfo.setVisibility(View.VISIBLE);
+                        });
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    runOnUiThread(() ->
+                            Toast.makeText(MapsActivity.this, "Eroare la încărcarea traseului", Toast.LENGTH_SHORT).show()
+                    );
+                }
+            }).start();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            Toast.makeText(this, "Eroare la geocodare", Toast.LENGTH_SHORT).show();
+        }
     }
 }

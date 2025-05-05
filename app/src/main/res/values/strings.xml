@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">RoadApp</string>
+    <string name="hint_start">Punct de plecare</string>
+    <string name="hint_destination">Destinație</string>
+    <string name="text_afisare_traseu">Afișare traseu</string>
+
 </resources>

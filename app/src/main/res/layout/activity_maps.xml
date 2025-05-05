@@ -1,12 +1,142 @@
 <?xml version="1.0" encoding="utf-8"?>
-<fragment
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:id="@+id/map"
-    android:name="com.google.android.gms.maps.SupportMapFragment"
+    tools:context=".MapsActivity">
 
-    tools:context=".MapsActivity"/>
+    <!-- Fragment Google Maps -->
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/map"
+        android:name="com.google.android.gms.maps.SupportMapFragment"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
+    <!-- Card inputuri plecare + destinație -->
+    <LinearLayout
+        android:id="@+id/card_input"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_input_field"
+        android:padding="12dp"
+        android:elevation="8dp"
+        android:layout_margin="12dp"
+        android:layout_alignParentTop="true">
+
+        <EditText
+            android:id="@+id/edit_start"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Punct de plecare"
+            android:padding="10dp"
+            android:textColor="@android:color/black"
+            android:inputType="text" />
+
+        <EditText
+            android:id="@+id/edit_destination"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Destinație"
+            android:padding="10dp"
+            android:textColor="@android:color/black"
+            android:inputType="text"
+            android:layout_marginTop="6dp" />
+
+        <Button
+            android:id="@+id/btn_route"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Afișare traseu"
+            android:textAllCaps="false"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="10dp" />
+    </LinearLayout>
+
+    <!-- TextView destinatie retrasa sus (ascuns initial) -->
+    <TextView
+        android:id="@+id/text_dest_final"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="12dp"
+        android:padding="12dp"
+        android:background="@drawable/bg_input_field"
+        android:textColor="@android:color/black"
+        android:textSize="16sp"
+        android:gravity="center"
+        android:visibility="gone"
+        android:elevation="8dp"
+        android:layout_alignParentTop="true" />
+
+    <!-- Floating Action Button pentru raportare -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fab_report"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentEnd="true"
+        android:layout_marginBottom="140dp"
+        android:layout_marginEnd="16dp"
+        android:src="@drawable/warning_icon"
+        android:contentDescription="Raportează"
+        app:backgroundTint="#FFC107"
+        app:tint="@null"
+        app:borderWidth="0dp" />
+
+    <!-- Card jos cu detalii traseu + Start -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/card_info"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_margin="16dp"
+        android:visibility="gone"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="8dp"
+        android:backgroundTint="#FFFFFFFF"
+        android:padding="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Distanță + durată pe același rând -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingHorizontal="4dp">
+
+                <TextView
+                    android:id="@+id/text_distance"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Distanță: --"
+                    android:textSize="16sp"
+                    android:textColor="@android:color/black" />
+
+                <TextView
+                    android:id="@+id/text_duration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Durată: --"
+                    android:textSize="16sp"
+                    android:textColor="@android:color/black" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btn_start"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:text="Start"
+                android:textAllCaps="false"
+                android:layout_marginTop="10dp"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+</RelativeLayout>
