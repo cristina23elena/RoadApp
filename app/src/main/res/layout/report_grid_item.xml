@@ -24,8 +24,10 @@
         android:gravity="center_horizontal"
         android:layout_marginTop="4dp"
         android:maxLines="2"
-        android:minWidth="72dp"
+        android:minWidth="69dp"
         android:textAlignment="center" />
+
+
 
 
 </LinearLayout>

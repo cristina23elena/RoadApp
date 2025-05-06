@@ -178,7 +178,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 "Blocaj",
                 "Denivelare",
                 "Inundație",
-                "Capac lipsa"
+                "Capac Lipsa"
 
         };
 
@@ -430,8 +430,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         }
 
 
+
                         runOnUiThread(() -> {
                             gMap.clear();
+
+                            // Adaugă din nou marker-ele de raport
+                            loadReportsFromFirebase();
+
+                            // Desenează ruta principală
                             gMap.addPolyline(new PolylineOptions().addAll(points).color(0xFF6200EE).width(12));
 
                             Bitmap arrowIcon = BitmapFactory.decodeResource(getResources(), R.drawable.marker_arrow);
@@ -451,8 +457,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             cardInfo.setVisibility(View.VISIBLE);
                             updateScoruriSegment();
                             new Handler(Looper.getMainLooper()).postDelayed(() -> drawSegmentsOnMap(), 2000);
-
                         });
+
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -467,31 +473,54 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             Toast.makeText(this, "Eroare la geocodare", Toast.LENGTH_SHORT).show();
         }
     }
+    private String normalizeTip(String tip) {
+        if (tip == null) return "";
+        return tip.toLowerCase(Locale.ROOT)
+                .replace("ă", "a")
+                .replace("â", "a")
+                .replace("î", "i")
+                .replace("ș", "s")
+                .replace("ş", "s")
+                .replace("ț", "t")
+                .replace("ţ", "t");
+    }
+
     private void updateScoruriSegment() {
         DatabaseReference raportariRef = FirebaseDatabase.getInstance().getReference("raportari");
         DatabaseReference segmenteRef = FirebaseDatabase.getInstance().getReference("segmente_drum");
 
-        segmenteRef.addListenerForSingleValueEvent(new ValueEventListener() {
+        raportariRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
-            public void onDataChange(@NonNull DataSnapshot segmentSnapshot) {
-                for (DataSnapshot segment : segmentSnapshot.getChildren()) {
-                    double startLat = segment.child("startLat").getValue(Double.class);
-                    double startLng = segment.child("startLng").getValue(Double.class);
-                    double endLat = segment.child("endLat").getValue(Double.class);
-                    double endLng = segment.child("endLng").getValue(Double.class);
+            public void onDataChange(@NonNull DataSnapshot raportSnapshot) {
+                List<DataSnapshot> raportari = new ArrayList<>();
+                for (DataSnapshot r : raportSnapshot.getChildren()) {
+                    raportari.add(r);
+                }
 
-                    LatLng start = new LatLng(startLat, startLng);
-                    LatLng end = new LatLng(endLat, endLng);
+                segmenteRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot segmentSnapshot) {
+                        int total = (int) segmentSnapshot.getChildrenCount();
+                        final int[] processed = {0};
 
-                    raportariRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                        @Override
-                        public void onDataChange(@NonNull DataSnapshot raportSnapshot) {
+                        for (DataSnapshot segment : segmentSnapshot.getChildren()) {
+                            double startLat = segment.child("startLat").getValue(Double.class);
+                            double startLng = segment.child("startLng").getValue(Double.class);
+                            double endLat = segment.child("endLat").getValue(Double.class);
+                            double endLng = segment.child("endLng").getValue(Double.class);
+
+                            LatLng start = new LatLng(startLat, startLng);
+                            LatLng end = new LatLng(endLat, endLng);
+
                             int scor = 100;
                             long timpActual = System.currentTimeMillis();
                             long sapteZile = 7 * 24 * 60 * 60 * 1000L;
 
-                            for (DataSnapshot r : raportSnapshot.getChildren()) {
-                                String tip = r.child("tip").getValue(String.class).toLowerCase();
+                            for (DataSnapshot r : raportari) {
+                                String tipRaw = r.child("tip").getValue(String.class);
+                                if (tipRaw == null) continue;
+
+                                String tip = normalizeTip(tipRaw);
                                 Double lat = r.child("lat").getValue(Double.class);
                                 Double lng = r.child("lng").getValue(Double.class);
                                 Long timestamp = r.child("timestamp").getValue(Long.class);
@@ -499,7 +528,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                 if (lat == null || lng == null || timestamp == null) continue;
                                 if ((timpActual - timestamp) > sapteZile) continue;
 
-                                // Doar probleme care țin de starea drumului
                                 if (tip.contains("groapa") || tip.contains("lucru") || tip.contains("denivelare")
                                         || tip.contains("inundatie") || tip.contains("capac")) {
 
@@ -508,19 +536,25 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                 }
                             }
 
-                            segment.getRef().child("scor").setValue(Math.max(scor, 0));
+                            segment.getRef().child("scor").setValue(Math.max(scor, 0)).addOnCompleteListener(task -> {
+                                processed[0]++;
+                                if (processed[0] == total) {
+                                    runOnUiThread(() -> drawSegmentsOnMap());
+                                }
+                            });
                         }
+                    }
 
-                        @Override
-                        public void onCancelled(@NonNull DatabaseError error) {}
-                    });
-                }
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError error) {}
+                });
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {}
         });
     }
+
     public double distanceToSegment(LatLng A, LatLng B, LatLng P) {
         double ax = A.latitude;
         double ay = A.longitude;
