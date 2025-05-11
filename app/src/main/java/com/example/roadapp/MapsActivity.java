@@ -270,9 +270,15 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private void startLocationUpdates() {
         LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
-                .setMinUpdateIntervalMillis(2000).build();
+                .setMinUpdateIntervalMillis(2000)
+                .build();
 
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+
+        Bitmap arrowBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.marker_arrow);
+        Bitmap resizedArrow = Bitmap.createScaledBitmap(arrowBitmap, 90, 90, false);
 
         fusedClient.requestLocationUpdates(request, new LocationCallback() {
             @Override
@@ -281,17 +287,31 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     currentLocation = result.getLastLocation();
                     LatLng currentLatLng = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
 
-                    if (userMarker != null) userMarker.remove();
-                    userMarker = gMap.addMarker(new MarkerOptions().position(currentLatLng).title("Tu ești aici"));
-
-                    if (!cameraAlreadyMoved) {
-                        gMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 14));
-                        cameraAlreadyMoved = true;
+                    if (userMarker == null) {
+                        userMarker = gMap.addMarker(new MarkerOptions()
+                                .position(currentLatLng)
+                                .anchor(0.5f, 0.5f)
+                                .flat(true)
+                                .icon(BitmapDescriptorFactory.fromBitmap(resizedArrow))
+                                .rotation(currentLocation.getBearing()));
+                    } else {
+                        userMarker.setPosition(currentLatLng);
+                        userMarker.setRotation(currentLocation.getBearing());
                     }
+
+                    // Urmărește constant locația cu zoom și înclinare
+                    CameraPosition cameraPosition = new CameraPosition.Builder()
+                            .target(currentLatLng)
+                            .zoom(20f)
+                            .bearing(currentLocation.getBearing())
+                            .tilt(75f)
+                            .build();
+                    gMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
                 }
             }
         }, getMainLooper());
     }
+
 
     private void loadReportsFromFirebase() {
         DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference("raportari");
@@ -616,7 +636,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     gMap.addPolyline(new PolylineOptions()
                             .add(start, end)
                             .color(color)
-                            .width(30));
+                            .width(34));
                 }
             }
 
