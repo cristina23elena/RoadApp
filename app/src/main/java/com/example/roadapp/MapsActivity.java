@@ -339,6 +339,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         });
     }
 
+
+
+
     private int getIconForReport(String tip) {
         if (tip == null) return R.drawable.marker_arrow;
 
@@ -356,6 +359,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         if (tip.contains("politie")) return R.drawable.police_car;
         if (tip.contains("accident")) return R.drawable.car_crash;
         if (tip.contains("blocaj")) return R.drawable.warning_icon;
+        if (tip.contains("denivelare")) return R.drawable.ic_bump;
+        if (tip.contains("inundatie")) return R.drawable.ic_flood;
+        if (tip.contains("capac")) return R.drawable.ic_missing_lid;
 
         return R.drawable.marker_arrow;
     }
@@ -610,7 +616,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     gMap.addPolyline(new PolylineOptions()
                             .add(start, end)
                             .color(color)
-                            .width(10));
+                            .width(30));
                 }
             }
 

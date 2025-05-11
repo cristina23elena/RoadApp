@@ -90,6 +90,7 @@ public class LoginActivity extends AppCompatActivity {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
 
+
                 if (snapshot.exists()){
 
                     loginUsername.setError(null);
