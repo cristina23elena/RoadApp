@@ -126,13 +126,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             }
         });
         btnStart.setOnClickListener(v -> {
-            // Șterge markerul locației curente (dacă există)
+            // sterge markerul locatiei curente (daca exista)
             if (userMarker != null) {
                 userMarker.remove();
                 userMarker = null;
             }
 
-            // Mișcă camera pe punctul de start dacă există
+            // Misca camera pe punctul de start daca exista
             if (startMarker != null) {
                 CameraPosition cameraPosition = new CameraPosition.Builder()
                         .target(startMarker.getPosition())
@@ -143,7 +143,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 gMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
             }
 
-            // Ascunde cardul cu inputuri cu animație în sus
+            // Ascunde cardul cu inputuri cu animatie in sus
             cardInput.animate()
                     .translationY(-cardInput.getHeight())
                     .alpha(0f)
@@ -151,13 +151,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     .withEndAction(() -> cardInput.setVisibility(View.GONE))
                     .start();
 
-            // Afișează doar destinația într-un singur rând
+            // Afiseaza doar destinatia intr-un singur rand
             String destinatie = editDestination.getText().toString();
             textDestFinal.setText(destinatie);
             textDestFinal.setVisibility(View.VISIBLE);
 
             Toast.makeText(this, "Navigarea a început!", Toast.LENGTH_SHORT).show();
-            fabReport.setVisibility(View.VISIBLE); // Afișează butonul de raportare
+            fabReport.setVisibility(View.VISIBLE); // Afiseaza butonul de raportare
         });
 
 
@@ -169,7 +169,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         View view = getLayoutInflater().inflate(R.layout.dialog_report_grid, null);
         GridLayout gridLayout = view.findViewById(R.id.grid_layout);
 
-        // Tipurile de raport și iconițele corespunzătoare
+        // Tipurile de raport si iconitele corespunzatoare
         String[] tipuri = {
                 "Groapă",
                 "Drum în lucru",
@@ -244,7 +244,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     reportMarkers.add(reportMarker);
                 }
 
-                //  Șterge markerul roșu default (dacă e prezent)
+                //  sterge markerul rosu default (daca e prezent)
                 if (userMarker != null) {
                     userMarker.remove();
                     userMarker = null;
@@ -266,7 +266,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             return;
         }
         gMap.setMyLocationEnabled(false);
-        gMap.setBuildingsEnabled(false); // opțional, dacă vrei stil plat
+        gMap.setBuildingsEnabled(false);
         startLocationUpdates();
         loadReportsFromFirebase();
     }
@@ -465,10 +465,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         runOnUiThread(() -> {
                             gMap.clear();
 
-                            // Adaugă din nou marker-ele de raport
+                            // Adauga din nou marker-ele de raport
                             loadReportsFromFirebase();
 
-                            // Desenează ruta principală
+                            // Deseneaza ruta principala
                             gMap.addPolyline(new PolylineOptions().addAll(points).color(0xFF6200EE).width(12));
 
                             Bitmap arrowIcon = BitmapFactory.decodeResource(getResources(), R.drawable.marker_arrow);
