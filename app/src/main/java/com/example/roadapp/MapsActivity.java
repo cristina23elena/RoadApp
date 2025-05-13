@@ -19,7 +19,7 @@ import androidx.fragment.app.FragmentActivity;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View.OnTouchListener;
-
+import com.google.android.gms.maps.model.RoundCap;
 
 import com.google.android.gms.location.*;
 import com.google.android.gms.maps.*;
@@ -138,7 +138,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         .target(startMarker.getPosition())
                         .zoom(18f)
                         .bearing(currentLocation != null ? currentLocation.getBearing() : 0)
-                        .tilt(60f)
+                        .tilt(0f)
                         .build();
                 gMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
             }
@@ -259,18 +259,21 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     @Override
     public void onMapReady(@NonNull GoogleMap googleMap) {
         gMap = googleMap;
+        gMap.setBuildingsEnabled(false);
+
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, REQUEST_CODE);
             return;
         }
-        gMap.setMyLocationEnabled(true);
+        gMap.setMyLocationEnabled(false);
+        gMap.setBuildingsEnabled(false); // opțional, dacă vrei stil plat
         startLocationUpdates();
         loadReportsFromFirebase();
     }
 
     private void startLocationUpdates() {
-        LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
-                .setMinUpdateIntervalMillis(2000)
+        LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000)
+                .setMinUpdateIntervalMillis(1000)
                 .build();
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -287,30 +290,32 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     currentLocation = result.getLastLocation();
                     LatLng currentLatLng = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
 
-                    if (userMarker == null) {
-                        userMarker = gMap.addMarker(new MarkerOptions()
-                                .position(currentLatLng)
-                                .anchor(0.5f, 0.5f)
-                                .flat(true)
-                                .icon(BitmapDescriptorFactory.fromBitmap(resizedArrow))
-                                .rotation(currentLocation.getBearing()));
-                    } else {
-                        userMarker.setPosition(currentLatLng);
-                        userMarker.setRotation(currentLocation.getBearing());
-                    }
+                    runOnUiThread(() -> {
+                        if (userMarker == null) {
+                            userMarker = gMap.addMarker(new MarkerOptions()
+                                    .position(currentLatLng)
+                                    .anchor(0.5f, 0.5f)
+                                    .flat(true)
+                                    .icon(BitmapDescriptorFactory.fromBitmap(resizedArrow))
+                                    .rotation(currentLocation.getBearing()));
+                        } else {
+                            userMarker.setPosition(currentLatLng);
+                            userMarker.setRotation(currentLocation.getBearing());
+                        }
 
-                    // Urmărește constant locația cu zoom și înclinare
-                    CameraPosition cameraPosition = new CameraPosition.Builder()
-                            .target(currentLatLng)
-                            .zoom(20f)
-                            .bearing(currentLocation.getBearing())
-                            .tilt(75f)
-                            .build();
-                    gMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
+                        CameraPosition cameraPosition = new CameraPosition.Builder()
+                                .target(currentLatLng)
+                                .zoom(18f)
+                                .bearing(currentLocation.getBearing())
+                                .tilt(0f) // setare 2D
+                                .build();
+                        gMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
+                    });
                 }
             }
         }, getMainLooper());
     }
+
 
 
     private void loadReportsFromFirebase() {
@@ -469,10 +474,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             Bitmap arrowIcon = BitmapFactory.decodeResource(getResources(), R.drawable.marker_arrow);
                             Bitmap resizedArrow = Bitmap.createScaledBitmap(arrowIcon, 90, 90, false);
 
-                            startMarker = gMap.addMarker(new MarkerOptions()
-                                    .position(origin)
-                                    .title("Start")
-                                    .icon(BitmapDescriptorFactory.fromBitmap(resizedArrow)));
 
                             gMap.addMarker(new MarkerOptions().position(destination).title("Destinație"));
 
@@ -636,7 +637,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     gMap.addPolyline(new PolylineOptions()
                             .add(start, end)
                             .color(color)
-                            .width(34));
+                            .width(38)
+                            .startCap(new RoundCap())
+                            .endCap(new RoundCap())
+                            .zIndex(20));
+
                 }
             }
 
