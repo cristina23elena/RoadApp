@@ -26,16 +26,23 @@
         android:layout_margin="12dp"
         android:layout_alignParentTop="true">
 
-        <EditText
+
+
+
+        <!-- AutoComplete pentru punctul de plecare -->
+        <AutoCompleteTextView
             android:id="@+id/edit_start"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="Punct de plecare"
             android:padding="10dp"
             android:textColor="@android:color/black"
-            android:inputType="text" />
+            android:inputType="text"
+            android:completionThreshold="3"
+            android:imeOptions="actionNext" />
 
-        <EditText
+        <!-- AutoComplete pentru destinație -->
+        <AutoCompleteTextView
             android:id="@+id/edit_destination"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -43,6 +50,8 @@
             android:padding="10dp"
             android:textColor="@android:color/black"
             android:inputType="text"
+            android:completionThreshold="3"
+            android:imeOptions="actionSearch"
             android:layout_marginTop="6dp" />
 
         <Button
@@ -55,7 +64,7 @@
             android:layout_marginTop="10dp" />
     </LinearLayout>
 
-    <!-- TextView destinatie retrasa sus (ascuns initial) -->
+    <!-- TextView destinație retrasă sus (ascuns inițial) -->
     <TextView
         android:id="@+id/text_dest_final"
         android:layout_width="match_parent"
@@ -84,6 +93,46 @@
         app:backgroundTint="#FFC107"
         app:tint="@null"
         app:borderWidth="0dp" />
+
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/speed_card"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentStart="true"
+        android:layout_marginStart="16dp"
+        android:layout_marginBottom="140dp"
+        android:visibility="gone"
+        app:cardCornerRadius="40dp"
+        app:cardElevation="8dp"
+        app:cardBackgroundColor="#000000">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center">
+
+            <TextView
+                android:id="@+id/speed_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0"
+                android:textSize="26sp"
+                android:textColor="@android:color/white"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/speed_unit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="km/h"
+                android:textSize="12sp"
+                android:textColor="#CCCCCC" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
 
     <!-- Card jos cu detalii traseu + Start -->
     <androidx.cardview.widget.CardView

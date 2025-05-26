@@ -11,23 +11,38 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.*;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Rect;
+
 
 import androidx.annotation.NonNull;
 import androidx.cardview.widget.CardView;
 import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.FragmentActivity;
+
 import android.view.GestureDetector;
 import android.view.MotionEvent;
-import android.view.View.OnTouchListener;
-import com.google.android.gms.maps.model.RoundCap;
 
+import com.google.android.gms.maps.model.RoundCap;
 import com.google.android.gms.location.*;
 import com.google.android.gms.maps.*;
 import com.google.android.gms.maps.model.*;
+
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
+
 import com.google.firebase.database.*;
 import com.google.maps.android.PolyUtil;
-import com.google.android.material.bottomsheet.BottomSheetDialog;
+
+// Places API
+import com.google.android.libraries.places.api.Places;
+import com.google.android.libraries.places.api.model.AutocompletePrediction;
+import com.google.android.libraries.places.api.model.AutocompleteSessionToken;
+import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest;
+import com.google.android.libraries.places.api.net.PlacesClient;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -37,9 +52,12 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.*;
+
 import android.os.Handler;
 import android.os.Looper;
-
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.widget.AutoCompleteTextView;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
@@ -49,7 +67,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private Location currentLocation;
     private boolean cameraAlreadyMoved = false;
     private Marker userMarker;
-    private EditText editStart, editDestination;
+    private AutoCompleteTextView editStart, editDestination;
     private Button btnRoute, btnStart;
     private TextView textDistance, textDuration;
     private CardView cardInfo;
@@ -58,11 +76,25 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private Marker startMarker;
     private LinearLayout cardInput;
     private TextView textDestFinal;
+    private List<LatLng> currentRoutePoints = new ArrayList<>();
+    private TextView textSpeed;
+   // private FloatingActionButton fabSpeed;
+
+    private View speedCard;
+    private TextView speedText;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
+        speedCard = findViewById(R.id.speed_card);
+        speedText = speedCard.findViewById(R.id.speed_text);
+        TextView speedUnit = speedCard.findViewById(R.id.speed_unit);
+        speedCard.setVisibility(View.GONE);
+        if (!Places.isInitialized()) {
+            Places.initialize(getApplicationContext(), "AIzaSyCw3d4KYLtAUYRF1NOpfoF6fa6hksclw2s");
+        }
+        AutocompleteSessionToken token = AutocompleteSessionToken.newInstance();
 
         editStart = findViewById(R.id.edit_start);
         editDestination = findViewById(R.id.edit_destination);
@@ -72,19 +104,41 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         textDuration = findViewById(R.id.text_duration);
         cardInfo = findViewById(R.id.card_info);
         fabReport = findViewById(R.id.fab_report);
+
+
+
         cardInput = findViewById(R.id.card_input);
         textDestFinal = findViewById(R.id.text_dest_final);
-        GestureDetector gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
 
-            @Override
-            public boolean onDown(MotionEvent e) {
-                return true;
+
+
+        editStart.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (!s.toString().isEmpty()) {
+                    findPlacePredictions(s.toString(), token, editStart);
+                }
             }
+            @Override public void afterTextChanged(Editable s) {}
+        });
+
+        editDestination.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (!s.toString().isEmpty()) {
+                    findPlacePredictions(s.toString(), token, editDestination);
+                }
+            }
+            @Override public void afterTextChanged(Editable s) {}
+        });
+
+        GestureDetector gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override public boolean onDown(MotionEvent e) { return true; }
 
             @Override
             public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
                 float deltaY = e2.getY() - e1.getY();
-                if (deltaY > 100) { // glisare în jos
+                if (deltaY > 100) {
                     cardInput.setVisibility(View.VISIBLE);
                     cardInput.setTranslationY(-cardInput.getHeight());
                     cardInput.animate().translationY(0f).alpha(1f).setDuration(500).start();
@@ -95,11 +149,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             }
         });
 
-
         textDestFinal.setOnTouchListener((v, event) -> gestureDetector.onTouchEvent(event));
-
         fabReport.setVisibility(View.GONE);
-
         fusedClient = LocationServices.getFusedLocationProviderClient(this);
 
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
@@ -108,6 +159,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         btnRoute.setOnClickListener(v -> {
             String start = editStart.getText().toString();
             String dest = editDestination.getText().toString();
+
+
 
             if (dest.isEmpty()) {
                 Toast.makeText(this, "Completează destinația", Toast.LENGTH_SHORT).show();
@@ -125,25 +178,23 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 drawRoute(start, dest);
             }
         });
+
         btnStart.setOnClickListener(v -> {
-            // sterge markerul locatiei curente (daca exista)
             if (userMarker != null) {
                 userMarker.remove();
                 userMarker = null;
             }
 
-            // Misca camera pe punctul de start daca exista
-            if (startMarker != null) {
-                CameraPosition cameraPosition = new CameraPosition.Builder()
-                        .target(startMarker.getPosition())
-                        .zoom(18f)
-                        .bearing(currentLocation != null ? currentLocation.getBearing() : 0)
-                        .tilt(0f)
-                        .build();
-                gMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
+            // Zoom pe întreaga rută
+            if (currentRoutePoints != null && !currentRoutePoints.isEmpty()) {
+                LatLngBounds.Builder builder = new LatLngBounds.Builder();
+                for (LatLng point : currentRoutePoints) {
+                    builder.include(point);
+                }
+                LatLngBounds bounds = builder.build();
+                gMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 100));
             }
 
-            // Ascunde cardul cu inputuri cu animatie in sus
             cardInput.animate()
                     .translationY(-cardInput.getHeight())
                     .alpha(0f)
@@ -151,20 +202,49 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     .withEndAction(() -> cardInput.setVisibility(View.GONE))
                     .start();
 
-            // Afiseaza doar destinatia intr-un singur rand
-            String destinatie = editDestination.getText().toString();
-            textDestFinal.setText(destinatie);
+            textDestFinal.setText(editDestination.getText().toString());
             textDestFinal.setVisibility(View.VISIBLE);
-
             Toast.makeText(this, "Navigarea a început!", Toast.LENGTH_SHORT).show();
-            fabReport.setVisibility(View.VISIBLE); // Afiseaza butonul de raportare
+            fabReport.setVisibility(View.VISIBLE);
+           // fabSpeed.setVisibility(View.VISIBLE);
+            speedCard .setVisibility(View.VISIBLE);
         });
 
-
         fabReport.setOnClickListener(v -> showReportDialog());
+
     }
 
-    private void showReportDialog() {
+
+
+    //  Metoda pentru sugestii autocomplete Places API
+    private void findPlacePredictions(String query, AutocompleteSessionToken token, AutoCompleteTextView targetEditText) {
+        FindAutocompletePredictionsRequest request = FindAutocompletePredictionsRequest.builder()
+                .setSessionToken(token)
+                .setQuery(query)
+                .build();
+
+        PlacesClient placesClient = Places.createClient(this);
+        placesClient.findAutocompletePredictions(request).addOnSuccessListener(response -> {
+            List<String> suggestions = new ArrayList<>();
+            for (AutocompletePrediction prediction : response.getAutocompletePredictions()) {
+                suggestions.add(prediction.getFullText(null).toString());
+            }
+
+            ArrayAdapter<String> adapter = new ArrayAdapter<>(MapsActivity.this,
+                    android.R.layout.simple_dropdown_item_1line, suggestions);
+
+            targetEditText.setAdapter(adapter);
+            targetEditText.setThreshold(1);
+            targetEditText.showDropDown();
+        }).addOnFailureListener(e -> Log.e("PLACES_API", "Eroare sugestii: ", e));
+    }
+
+    // restul metodelor tale rămân neschimbate...
+    // (onMapReady, startLocationUpdates, showReportDialog, sendReport, drawRoute, etc.)
+
+
+
+private void showReportDialog() {
         BottomSheetDialog dialog = new BottomSheetDialog(this);
         View view = getLayoutInflater().inflate(R.layout.dialog_report_grid, null);
         GridLayout gridLayout = view.findViewById(R.id.grid_layout);
@@ -288,6 +368,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             public void onLocationResult(@NonNull LocationResult result) {
                 if (result.getLastLocation() != null) {
                     currentLocation = result.getLastLocation();
+                    float speedMps = currentLocation.getSpeed(); // în m/s
+                    float speedKph = speedMps * 3.6f; // conversie în km/h
+
+// rotunjim viteza
+                    int roundedSpeed = Math.round(speedKph);
+
+                    if (speedCard.getVisibility() == View.VISIBLE) {
+                        speedText.setText(String.valueOf(roundedSpeed));
+                    }
+
+
+
                     LatLng currentLatLng = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
 
                     runOnUiThread(() -> {
@@ -442,13 +534,15 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         String duration = leg.getJSONObject("duration").getString("text");
                         String polyline = route.getJSONObject("overview_polyline").getString("points");
 
-                        List<LatLng> points = PolyUtil.decode(polyline);
+                        currentRoutePoints = PolyUtil.decode(polyline);
+
                         DatabaseReference segRef = FirebaseDatabase.getInstance().getReference("segmente_drum");
                         segRef.removeValue(); // opțional: șterge segmentele vechi pentru traseu nou
 
-                        for (int i = 0; i < points.size() - 1; i++) {
-                            LatLng start = points.get(i);
-                            LatLng end = points.get(i + 1);
+                        for (int i = 0; i < currentRoutePoints.size() - 1; i++) {
+                            LatLng start = currentRoutePoints.get(i);
+                            LatLng end = currentRoutePoints.get(i + 1);
+
 
                             Map<String, Object> segment = new HashMap<>();
                             segment.put("startLat", start.latitude);
@@ -469,7 +563,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             loadReportsFromFirebase();
 
                             // Deseneaza ruta principala
-                            gMap.addPolyline(new PolylineOptions().addAll(points).color(0xFF6200EE).width(12));
+                            gMap.addPolyline(new PolylineOptions().addAll(currentRoutePoints).color(0xFF6200EE).width(12));
+
 
                             Bitmap arrowIcon = BitmapFactory.decodeResource(getResources(), R.drawable.marker_arrow);
                             Bitmap resizedArrow = Bitmap.createScaledBitmap(arrowIcon, 90, 90, false);
@@ -650,6 +745,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 Toast.makeText(MapsActivity.this, "Eroare la afișarea stării drumului", Toast.LENGTH_SHORT).show();
             }
         });
+
     }
+
+
+
+
 
 }
